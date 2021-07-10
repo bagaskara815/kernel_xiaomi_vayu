@@ -98,7 +98,6 @@ static void nvt_ts_late_resume(struct early_suspend *h);
 #endif
 static int32_t nvt_ts_suspend(struct device *dev);
 static int32_t nvt_ts_resume(struct device *dev);
-extern int dsi_panel_lockdown_info_read(unsigned char *plockdowninfo);
 extern void dsi_panel_doubleclick_enable(bool on);
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 static int32_t nvt_check_palm(uint8_t input_id, uint8_t *data);
@@ -1109,9 +1108,36 @@ static bool nvt_cmds_panel_info(void)
 		if (!strncmp(display_node, "dsi_j20s_36_02_0a_video_display",
 					strlen("dsi_j20s_36_02_0a_video_display"))) {
 			panel_id = true;
+			panel_is_tianma = 1;
 		}
 	}
 	return panel_id;
+}
+
+static inline int dsi_panel_lockdown_info_read(unsigned char *plockdowninfo)
+{
+	if (nvt_cmds_panel_info()) {
+		NVT_LOG("%s: lockdown panel is tianma\n", __func__);
+		plockdowninfo[0] = 0x46;
+		plockdowninfo[1] = 0x36;
+		plockdowninfo[2] = 0x32;
+		plockdowninfo[3] = 0x01;
+		plockdowninfo[4] = 0x4a;
+		plockdowninfo[5] = 0x14;
+		plockdowninfo[6] = 0x31;
+		plockdowninfo[7] = 0x00;
+	} else {
+		NVT_LOG("%s: lockdown panel is huaxing\n", __func__);
+		plockdowninfo[0] = 0x00;
+		plockdowninfo[1] = 0x00;
+		plockdowninfo[2] = 0x00;
+		plockdowninfo[3] = 0x00;
+		plockdowninfo[4] = 0x00;
+		plockdowninfo[5] = 0x00;
+		plockdowninfo[6] = 0x00;
+		plockdowninfo[7] = 0x00;
+	}
+	return 1;
 }
 
 static int nvt_get_panel_type(struct nvt_ts_data *ts_data)
@@ -2601,6 +2627,7 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 		debugfs_create_file("touch_boost", 0660, ts->debugfs, ts, &nvt_touch_test_fops);
 	}
 #endif
+	nvt_cmds_panel_info();
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 			xiaomi_touch_interfaces.touch_vendor_read = nvt_touch_vendor_read;
 			xiaomi_touch_interfaces.panel_display_read = nvt_panel_display_read;
@@ -3227,5 +3254,6 @@ static void __exit nvt_driver_exit(void)
 }
 late_initcall(nvt_driver_init);
 
+module_param_named(touch_fw_override, touch_fw_override, int, 0664);
 MODULE_DESCRIPTION("Novatek Touchscreen Driver");
 MODULE_LICENSE("GPL");
