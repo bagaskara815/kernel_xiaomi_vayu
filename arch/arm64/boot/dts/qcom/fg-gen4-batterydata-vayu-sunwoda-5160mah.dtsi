@@ -44,6 +44,15 @@ qcom,xiaomi_j20s_sunwoda_5160mah_averaged_masterslave_aug26th2019 {
 	qcom,rslow-low-coeffs = <0x9d 0x15 0x4c 0x02>;
 	qcom,checksum = <0x7304>;
 	qcom,gui-version = "PM855GUI - 1.0.0.14";
+	/* Tweak SOC curve to be more linear and monotonic */
+	/* necessary for linearize-soc, like TCSS */
+	qcom,hold-soc-while-full;
+	/* scale MSOC with delta SOC after 100% */
+	qcom,linearize-soc;
+	/* scale SSOC with chg term current >= 90% to avoid jumps */
+	qcom,tcss-enable;
+	/* scale SSOC with BSOC to mitigate jumps */
+	qcom,bass-enable;
 	qcom,fg-profile-data = [
 		 09 00 8B E2
 		 99 D4 2B DB
