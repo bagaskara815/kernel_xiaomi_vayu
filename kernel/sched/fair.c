@@ -40,6 +40,10 @@
 #include "tune.h"
 #include "walt.h"
 
+#ifdef CONFIG_FUSE_SHORTCIRCUIT
+extern unsigned int ht_fuse_boost;
+#endif
+
 #ifdef CONFIG_SMP
 static inline bool task_fits_max(struct task_struct *p, int cpu);
 #endif /* CONFIG_SMP */
@@ -7576,6 +7580,12 @@ static int start_cpu(struct task_struct *p, bool boosted,
 		if (rtg_target_cpu < nr_cpu_ids)
 			return rtg_target_cpu;
 	}
+
+#ifdef CONFIG_FUSE_SHORTCIRCUIT
+	if (ht_fuse_boost && p->fuse_boost)
+		return rd->mid_cap_orig_cpu == -1 ?
+			rd->max_cap_orig_cpu : rd->mid_cap_orig_cpu;
+#endif
 
 	/* Where the task should land based on its demand */
 	if (rd->min_cap_orig_cpu != -1
