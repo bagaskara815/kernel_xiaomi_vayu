@@ -792,6 +792,251 @@ int smblib_set_dc_suspend(struct smb_charger *chg, bool suspend)
 	return rc;
 }
 
+int smblib_get_fastcharge_mode(struct smb_charger *chg)
+{
+	union power_supply_propval pval = {0,};
+	int rc = 0;
+
+	if (!chg->bms_psy)
+		return 0;
+
+	rc = power_supply_get_property(chg->bms_psy,
+		POWER_SUPPLY_PROP_FASTCHARGE_MODE, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't read fastcharge mode:%d\n", rc);
+		return rc;
+	}
+
+	return pval.intval;
+}
+
+static int smb5_config_sys_iterm(struct smb_charger *chg, bool ffc_enable)
+{
+	union power_supply_propval pval = {0,};
+	int rc;
+
+	pval.intval = ffc_enable;
+
+	rc = power_supply_set_property(chg->bms_psy,
+			POWER_SUPPLY_PROP_SYS_TERMINATION_CURRENT, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't set ffc termination current:%d\n", rc);
+		return rc;
+	}
+	rc = power_supply_set_property(chg->bms_psy,
+			POWER_SUPPLY_PROP_VBATT_FULL_VOL, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't set ffc vabtt full:%d\n", rc);
+		return rc;
+	}
+
+	rc = power_supply_set_property(chg->bms_psy,
+			POWER_SUPPLY_PROP_KI_COEFF_CURRENT, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't set ffc ki_coefet:%d\n", rc);
+		return rc;
+	}
+	return rc;
+}
+
+int smb5_config_iterm(struct smb_charger *chg, int hi_thresh, int low_thresh)
+{
+	s16 raw_hi_thresh, raw_lo_thresh;
+	u8 *buf;
+	int rc = 0;
+
+	rc = smblib_masked_write(chg, CHGR_ADC_TERM_CFG_REG,
+			TERM_BASED_ON_SYNC_CONV_OR_SAMPLE_CNT,
+			TERM_BASED_ON_SAMPLE_CNT);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't configure ADC_ITERM_CFG rc=%d\n",
+				rc);
+		return rc;
+	}
+
+	/*
+	 * Conversion:
+	 *	raw (A) = (scaled_mA * ADC_CHG_TERM_MASK) / (10 * 1000)
+	 * Note: raw needs to be converted to big-endian format.
+	 */
+
+	if (hi_thresh) {
+		raw_hi_thresh = ((hi_thresh * ADC_CHG_ITERM_MASK) / 10000);
+		raw_hi_thresh = sign_extend32(raw_hi_thresh, 15);
+		buf = (u8 *)&raw_hi_thresh;
+		rc = smblib_write(chg, CHGR_ADC_ITERM_UP_THD_MSB_REG,
+							buf[1]);
+		if (rc < 0) {
+			dev_err(chg->dev, "Couldn't set term MSB rc=%d\n",
+				rc);
+			return rc;
+		}
+		rc = smblib_write(chg, CHGR_ADC_ITERM_UP_THD_LSB_REG,
+							buf[0]);
+		if (rc < 0) {
+			dev_err(chg->dev, "Couldn't set term LSB rc=%d\n",
+				rc);
+			return rc;
+		}
+	}
+
+	if (low_thresh) {
+		raw_lo_thresh = ((low_thresh * ADC_CHG_ITERM_MASK) / 10000);
+		raw_lo_thresh = sign_extend32(raw_lo_thresh, 15);
+		buf = (u8 *)&raw_lo_thresh;
+		raw_lo_thresh = buf[1] | (buf[0] << 8);
+
+		rc = smblib_batch_write(chg, CHGR_ADC_ITERM_LO_THD_MSB_REG,
+				(u8 *)&raw_lo_thresh, 2);
+		if (rc < 0) {
+			dev_err(chg->dev, "Couldn't configure ITERM threshold LOW rc=%d\n",
+				rc);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
+static int set_ln8000_fv(struct smb_charger *chg) {
+	int rc;
+	union power_supply_propval val;
+	if (!chg->cp_psy) {
+		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
+		if (!chg->cp_psy){
+			chg->cp_psy = power_supply_get_by_name("ln8000");
+			if (!chg->cp_psy){
+				pr_err("cp_psy not found\n");
+				return 0;
+			}
+		}
+	}
+
+	rc = power_supply_get_property(chg->cp_psy,
+				POWER_SUPPLY_PROP_MODEL_NAME, &val);
+	if (rc < 0) {
+		pr_err("Error in getting charge IC name, rc=%d\n", rc);
+		return 0;
+	}
+
+	if (strcmp(val.strval, "ln8000") == 0) {
+		vote(chg->fv_votable, BATT_LN8000_VOTER, true, 4470000);
+	}
+	return 0;
+}
+
+int smblib_set_fastcharge_mode(struct smb_charger *chg, bool enable)
+{
+	union power_supply_propval pval = {0,};
+	int rc = 0;
+	int termi = -220, batt_temp;
+
+	if (!chg->bms_psy)
+		return 0;
+
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+	rc = power_supply_get_property(chg->bms_psy,
+				POWER_SUPPLY_PROP_AUTHENTIC, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't get battery authentic:%d\n", rc);
+		return rc;
+	}
+	if (!pval.intval)
+		enable = false;
+#endif
+
+	/*if soc > 95 do not set fastcharge flag*/
+	rc = power_supply_get_property(chg->bms_psy,
+				POWER_SUPPLY_PROP_CAPACITY, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't get bms capacity:%d\n", rc);
+		return rc;
+	}
+	if (enable && pval.intval >= 95) {
+		smblib_dbg(chg, PR_MISC, "soc:%d is more than 95"
+				"do not setfastcharge mode\n", pval.intval);
+		enable = false;
+	}
+	/*if temp > 450 or temp < 150 do not set fastcharge flag*/
+	rc = power_supply_get_property(chg->bms_psy,
+					POWER_SUPPLY_PROP_TEMP, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't get bms capacity:%d\n", rc);
+		goto set_term;
+	}
+	batt_temp = pval.intval;
+	if (enable && (pval.intval >= chg->ffc_high_tbat || pval.intval <= chg->ffc_low_tbat)) {
+		pr_info("tbat out of range, don't enable ffc\n");
+		enable = false;
+	}
+
+	pval.intval = enable;
+	rc = power_supply_set_property(chg->bms_psy,
+				POWER_SUPPLY_PROP_FASTCHARGE_MODE, &pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't write fastcharge mode:%d\n", rc);
+		goto set_term;
+	}
+
+	if (enable) {
+		/* ffc need clear non_fcc_vfloat_voter first */
+		vote(chg->fv_votable, NON_FFC_VFLOAT_VOTER, false, 0);
+		set_ln8000_fv(chg);
+		rc = power_supply_get_property(chg->bms_psy,
+				POWER_SUPPLY_PROP_FFC_TERMINATION_CURRENT, &pval);
+		if (rc < 0) {
+			smblib_err(chg, "Couldn't ffc termination current:%d\n", rc);
+			goto set_term;
+		}
+		termi = pval.intval;
+
+	} else {
+		/* when disable fast charge mode, need set vfloat back to 4.4V */
+		vote(chg->fv_votable, NON_FFC_VFLOAT_VOTER,
+				true, NON_FFC_VFLOAT_UV);
+		termi = chg->chg_term_current_thresh_hi_from_dts;
+	}
+	smb5_config_sys_iterm(chg, enable);
+set_term:
+	smb5_config_iterm(chg, termi, 50);
+
+	rc = vote(chg->fcc_votable, PD_VERIFED_VOTER,
+			!enable, PD_UNVERIFED_CURRENT);
+
+	rc = vote(chg->fv_votable, PD_VERIFED_VOTER,
+			!enable, PD_UNVERIFED_VOLTAGE);
+
+	pr_info("fastcharge mode:%d termi:%d\n", enable, termi);
+
+	return 0;
+}
+
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+static void smblib_check_batt_authentic(struct smb_charger *chg)
+{
+	int rc = 0;
+	int authen_result = -1;
+	union power_supply_propval pval = {0,};
+	if (chg->batt_verify_psy && chg->bms_psy) {
+		rc = power_supply_get_property(chg->bms_psy,
+			POWER_SUPPLY_PROP_AUTHENTIC, &pval);
+		if (!rc)
+			authen_result = pval.intval;
+		pr_err("authen_result: %d\n", authen_result);
+		if (!authen_result) {
+			pval.intval = 1;
+			rc = power_supply_set_property(chg->batt_verify_psy,
+					POWER_SUPPLY_PROP_AUTHENTIC, &pval);
+			if (rc)
+				pr_err("set batt_verify authentic prop failed: %d\n",
+						rc);
+		}
+		/* notify smblib_notifier_call to reset BATT_VERIFY_VOTER fcc voter */
+		power_supply_changed(chg->bms_psy);
+	}
+}
+#endif
+
 static int smblib_usb_pd_adapter_allowance_override(struct smb_charger *chg,
 					u8 allowed_voltage)
 {
@@ -2547,6 +2792,20 @@ int smblib_get_prop_batt_charge_type(struct smb_charger *chg,
 	}
 
 	return rc;
+}
+
+static bool is_bq25970_available(struct smb_charger *chg)
+{
+	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("bq2597x-standalone");
+
+	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("ln8000");
+
+	if (!chg->cp_psy)
+		return false;
+
+	return true;
 }
 
 int smblib_get_prop_batt_health(struct smb_charger *chg,
