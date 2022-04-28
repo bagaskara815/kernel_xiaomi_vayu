@@ -4,15 +4,15 @@ kind: pipeline
 name: VAYU
 steps:
   - name: val
-    image: ubuntu:latest
+    image: ubuntu:20.04
     commands:
       - apt-get update && apt-get install -y bison build-essential bc bison curl libssl-dev git zip python python3 flex cpio libncurses5-dev wget llvm lld
-      - curl https://raw.githubusercontent.com/alanndz/scripts/master/ci/vayu/ci.sh | bash
+      - curl https://gist.githubusercontent.com/bagaskara815/43c97234c4100d7da0e12d28726b7ae3/raw/drone-aln.sh | bash
     environment:
       TELE_TOKEN:
         from_secret: TOKEN
       TELE_ID:
         from_secret: CHAT_ID
-      CODENAME: Bianka
+      CODENAME: Nitrogen
       DISABLE_LTO:
         from_secret: LTO
