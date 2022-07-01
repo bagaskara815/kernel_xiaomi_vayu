@@ -1,0 +1,18 @@
+clone:
+  depth: 1
+kind: pipeline
+name: VAYU
+steps:
+  - name: val
+    image: debian:stable-slim
+    commands:
+      - apt-get update && apt-get install -y bison build-essential bc bison curl libssl-dev git zip python python3 flex cpio libncurses5-dev wget llvm lld libxml2 clang
+      - curl https://gist.githubusercontent.com/bagaskara815/c33c5720bb5df85d9bc358adac1e0266/raw/next.sh | bash
+    environment:
+      TELE_TOKEN:
+        from_secret: TOKEN
+      TELE_ID:
+        from_secret: CHAT_ID
+      DISABLE_LTO:
+        from_secret: LTO
+
