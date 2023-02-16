@@ -26,7 +26,8 @@ check_v2_signature(char *path, unsigned expected_size, unsigned expected_hash)
 
 	sign = 1;
 	// https://en.wikipedia.org/wiki/Zip_(file_format)#End_of_central_directory_record_(EOCD)
-	for (int i = 0;; ++i) {
+	int i;
+	for (i = 0;; ++i) {
 		unsigned short n;
 		pos = generic_file_llseek(fp, -i - 2, SEEK_END);
 		kernel_read_compat(fp, &n, 2, &pos);
@@ -102,7 +103,8 @@ check_v2_signature(char *path, unsigned expected_size, unsigned expected_hash)
 			if (size4 == expected_size) {
 				int hash = 1;
 				signed char c;
-				for (unsigned i = 0; i < size4; ++i) {
+				unsigned i;
+				for (i = 0; i < size4; ++i) {
 					kernel_read_compat(fp, &c, 0x1, &pos);
 					hash = 31 * hash + c;
 				}
