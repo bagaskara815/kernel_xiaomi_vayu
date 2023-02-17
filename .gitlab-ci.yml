@@ -1,0 +1,22 @@
+image: ubuntu:devel
+variables:
+  GIT_DEPTH: 1
+builder:
+  script: |
+    DEBIAN_FRONTEND=noninteractive apt-get update -yqq &> /dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install --install-recommends -yqq make bc bison flex cpio ca-certificates curl python2 zip libarchive-tools git lib{c6,c,ssl,xml2,mpc}-dev lib{debuginfod-common,debuginfod1} findutils ccache
+    mkdir -pv $CI_BUILDS_DIR/ccache
+    export CCACHE_DIR="$CI_BUILDS_DIR/ccache"
+    ccache -F 0
+    ccache -M 50
+    ccache -spv
+    git clone --depth=1 --single-branch https://github.com/cyberknight777/gcc-arm64 ~/.local/gcc64
+    git clone --depth=1 --single-branch https://github.com/cyberknight777/gcc-arm ~/.local/gcc32
+    sed -i "s/\$(nproc)/64/g" ./build.sh
+    sed -i "s/ifeq (.*)/ifeq (,,)/g;s/ifndef EXPECTED_SIZE/KSU_GIT_VERSION ?= 69\nexport KSU_GIT_VERSION\nccflags-y += -DKSU_GIT_VERSION=\$(KSU_GIT_VERSION)\n\nifndef EXPECTED_SIZE/g" drivers/kernelsu/Makefile
+    export KSU_GIT_VERSION=$(curl -s https://github.com/tiann/KernelSU | grep d-sm-inline -A1 | grep -oE ">[,0-9]+<" | grep -oE "[,0-9]+" | tr -d ',')
+    ./build.sh cidebug+gcc+upload+pix+tel
+  cache:
+    key: global-key
+    paths:
+      - ccache/
