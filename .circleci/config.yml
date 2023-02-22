@@ -1,0 +1,27 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: orgesified/latest:latest
+    steps:
+      - checkout
+      - run:
+          name: "update system & get packages"
+          command: "apt-get update -yqq &&
+          apt-get install --no-install-recommends -yqq make bc bison flex cpio ca-certificates curl python2 zip libarchive-tools git lib{c6,c,ssl,xml2,mpc}-dev lib{debuginfod-common,debuginfod1} findutils ccache"
+      - run:
+          name: "get gcc"
+          command: "git clone --depth=1 --single-branch https://github.com/cyberknight777/gcc-arm64 ~/.local/gcc64 &&
+          git clone --depth=1 --single-branch https://github.com/cyberknight777/gcc-arm ~/.local/gcc32"
+      - run:
+          name: "set ksu version"
+          command: "./ksuv.sh" 
+      - run:
+          name: "build"
+          command: "./build.sh cidebug+gcc+upload+pix+tel"
+
+workflows:
+  build-workflow:
+    jobs:
+      - build
