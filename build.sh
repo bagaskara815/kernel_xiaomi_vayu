@@ -127,9 +127,13 @@ fi
 if [[ ${CI} ]]; then
 	if [[ $* =~ "cidebug" ]]; then
 		touch out/build.log
+		export KSU_GIT_VERSION=$(curl -s https://github.com/tiann/KernelSU | grep d-sm-inline -A1 | grep -oE ">[,0-9]+<" | grep -oE "[,0-9]+" | tr -d ',')
 		kmake
+		echo $KSU_GIT_VERSION
 	else
+		export KSU_GIT_VERSION=$(curl -s https://github.com/tiann/KernelSU | grep d-sm-inline -A1 | grep -oE ">[,0-9]+<" | grep -oE "[,0-9]+" | tr -d ',')
 		kmake &> out/build.log
+		echo $KSU_GIT_VERSION
 	fi
 	if [ ! -f out/arch/arm64/boot/Image ]; then
 		tg_sendDocument "out/build.log" "Build failed" && exit
