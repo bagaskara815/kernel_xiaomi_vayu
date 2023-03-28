@@ -21,6 +21,8 @@
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
 
+#include <ksu_hook.h>
+
 /**
  * generic_fillattr - Fill in the basic attributes from the inode struct
  * @inode: Inode to use as the source
@@ -148,7 +150,6 @@ int vfs_statx_fd(unsigned int fd, struct kstat *stat,
 }
 EXPORT_SYMBOL(vfs_statx_fd);
 
-extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
 /**
  * vfs_statx - Get basic and extra attributes by filename
  * @dfd: A file descriptor representing the base dir for a relative filename
