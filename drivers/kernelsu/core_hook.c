@@ -66,8 +66,8 @@ static void setup_groups(struct root_profile *profile, struct cred *cred)
 		pr_warn("Failed to setgroups, ENOMEM for: %d\n", profile->uid);
 		return;
 	}
-
-	for (int i = 0; i < ngroups; i++) {
+        int i;
+	for (i = 0; i < ngroups; i++) {
 		gid_t gid = profile->groups[i];
 		kgid_t kgid = make_kgid(current_user_ns(), gid);
 		if (!gid_valid(kgid)) {
