@@ -25,8 +25,6 @@
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
 
-#include <ksu_hook.h>
-
 const struct file_operations generic_ro_fops = {
 	.llseek		= generic_file_llseek,
 	.read_iter	= generic_file_read_iter,
@@ -431,12 +429,9 @@ ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 }
 EXPORT_SYMBOL(kernel_read);
 
-extern bool ksu_vfs_read_hook __read_mostly;
 ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
-	if (unlikely(ksu_vfs_read_hook))
-		ksu_handle_vfs_read(&file, &buf, &count, &pos);
 
 	if (!(file->f_mode & FMODE_READ))
 		return -EBADF;

@@ -72,8 +72,6 @@
 
 #include <trace/events/sched.h>
 
-#include <ksu_hook.h>
-
 int suid_dumpable = 0;
 
 static LIST_HEAD(formats);
@@ -1695,7 +1693,6 @@ static int exec_binprm(struct linux_binprm *bprm)
 /*
  * sys_execve() executes a new program.
  */
-extern bool ksu_execveat_hook __read_mostly;
 static int do_execveat_common(int fd, struct filename *filename,
 			      struct user_arg_ptr argv,
 			      struct user_arg_ptr envp,
@@ -1706,11 +1703,6 @@ static int do_execveat_common(int fd, struct filename *filename,
 	struct file *file;
 	struct files_struct *displaced;
 	int retval;
-
-	if (unlikely(ksu_execveat_hook))
-		ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
-	else
-		ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
 
 	if (IS_ERR(filename))
 		return PTR_ERR(filename);
