@@ -1,0 +1,21 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: orgesified/latest:latest
+    steps:
+      - checkout
+      - run:
+          name: "update system & get packages"
+          command: "apt-get update -yqq &&
+          apt-get install --no-install-recommends -yqq make bc bison flex cpio ca-certificates curl python2 zip libarchive-tools git lib{c6,c,ssl,xml2,mpc}-dev lib{debuginfod-common,debuginfod1} findutils ccache xz-utils"
+      - run:
+          name: "build"
+          command: "bash build.sh"
+
+workflows:
+  build-workflow:
+    jobs:
+      - build
+
