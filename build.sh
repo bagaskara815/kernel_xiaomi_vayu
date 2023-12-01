@@ -43,7 +43,7 @@ fi
 # KernelSU
 git config --global user.email "bagaskara815@gmail.com"
 git config --global user.name "bagaskara815"
-curl https://gist.githubusercontent.com/bagaskara815/5aeb07f0d9031189871ffa362591b20f/raw/86b27b42954a3ad64f2de4001f5764f15fafd955/ksu.patch >> ksu.patch
+curl https://gist.githubusercontent.com/bagaskara815/5aeb07f0d9031189871ffa362591b20f/raw/ksu.patch >> ksu.patch
 git am ksu.patch
 curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
 
