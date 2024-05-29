@@ -9,6 +9,8 @@
 #
 # Normal rules (sorted alphabetically)
 #
+out
+KernelSU
 .*
 *.a
 *.bin
