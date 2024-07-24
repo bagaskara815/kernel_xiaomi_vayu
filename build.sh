@@ -18,7 +18,7 @@ fi
 KDIR=$(pwd)
 TC="${KDIR}/.tools"
 AK=${TC}/AnyKernel
-KERNEL_NAME="Derp"
+KERNEL_NAME="Derp-KSU"
 KERNEL_TYPE="EAS"
 PHONE="Poco X3 Pro"
 DEVICE="vayu"
@@ -41,11 +41,11 @@ if [[ ! -d ${AK} ]]; then
 fi
 
 # KernelSU
-#git config --global user.email "bagaskara815@gmail.com"
-#git config --global user.name "bagaskara815"
-#curl https://gist.githubusercontent.com/bagaskara815/5aeb07f0d9031189871ffa362591b20f/raw/ksu.patch >> ksu.patch
-#git am ksu.patch
-#curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+git config --global user.email "bagaskara815@gmail.com"
+git config --global user.name "bagaskara815"
+curl https://gist.githubusercontent.com/bagaskara815/5aeb07f0d9031189871ffa362591b20f/raw/ksu.patch >> ksu.patch
+git am ksu.patch
+curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
 
 # Setup name
 GIT="$(git log --pretty=format:'%h' -1)"
