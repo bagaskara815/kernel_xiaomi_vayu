@@ -45,7 +45,7 @@ git config --global user.email "bagaskara815@gmail.com"
 git config --global user.name "bagaskara815"
 curl https://gist.githubusercontent.com/bagaskara815/5aeb07f0d9031189871ffa362591b20f/raw/ksu.patch >> ksu.patch
 git am ksu.patch
-curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
 
 # Setup name
 GIT="$(git log --pretty=format:'%h' -1)"
