@@ -7,15 +7,17 @@ jobs:
     steps:
       - checkout
       - run:
-          name: "update system & get packages"
-          command: "apt-get update -yqq &&
-          apt-get install --no-install-recommends -yqq make bc bison flex cpio ca-certificates curl python2 zip libarchive-tools git lib{c6,c,ssl,xml2,mpc}-dev lib{debuginfod-common,debuginfod1} findutils ccache xz-utils"
+          name: "Update system sources and get packages"
+          command: |
+            sed -i 's|http://archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+            sed -i 's/lunar/jammy/g' /etc/apt/sources.list
+            apt-get update -yqq &&
+            apt-get install --no-install-recommends -yqq make bc bison flex cpio ca-certificates curl python2 zip libarchive-tools git lib{c6,c,ssl,xml2,mpc}-dev lib{debuginfod-common,debuginfod1} findutils ccache xz-utils
       - run:
-          name: "build"
+          name: "Build"
           command: "bash build.sh"
 
 workflows:
   build-workflow:
     jobs:
       - build
-
