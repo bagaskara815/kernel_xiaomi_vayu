@@ -45,7 +45,12 @@ git config --global user.email "bagaskara815@gmail.com"
 git config --global user.name "bagaskara815"
 curl https://gist.githubusercontent.com/bagaskara815/5aeb07f0d9031189871ffa362591b20f/raw/ksu.patch >> ksu.patch
 git am ksu.patch
-curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
+curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+
+# Susfs
+curl https://gist.githubusercontent.com/bagaskara815/bee1504e787c6d81eeb97524cbf34eaf/raw/susfs.patch >> susfs.patch
+git am susfs.patch
+curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
 
 # Setup name
 GIT="$(git log --pretty=format:'%h' -1)"
