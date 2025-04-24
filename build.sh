@@ -31,7 +31,10 @@ export KBUILD_BUILD_HOST=DominatingMachine
 AK_BRANCH="vayu"
 
 if [[ ! -d $TC/clang || ! -d $TC/gcc64 || ! -d $TC/gcc32 ]]; then
-  git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 --no-tags --single-branch -b master $TC/clang
+  [[ ! -d $TC/clang ]] && mkdir -p $TC/clang
+  wget $(curl -s https://raw.githubusercontent.com/ZyCromerZ/Clang/refs/heads/main/Clang-main-link.txt) -O clang.tar.gz
+  tar -zxvf clang.tar.gz -C $TC/clang/
+  rm -rf clang.tar.gz
   git clone https://github.com/mvaisakh/gcc-arm64 --depth=1 --no-tags --single-branch $TC/gcc64
   git clone https://github.com/mvaisakh/gcc-arm --depth=1 --no-tags --single-branch $TC/gcc32
 fi
@@ -59,7 +62,7 @@ LOGE=$(echo ${ZIP_NAME} | sed "s/.zip/.error.log/")
 IMG="$KDIR/out/arch/arm64/boot/Image"
 DTBO="$KDIR/out/arch/arm64/boot/dtbo.img"
 DTB="$KDIR/out/arch/arm64/boot/dts/qcom"
-CL="$TC/clang/clang-r547379"
+CL="$TC/clang/"
 export PATH="${CL}/bin:${TC}/gcc64/bin:${TC}/gcc32/bin:$PATH"
 export LD_LIBRARY_PATH="${CL}/lib:$LD_LIBRARY_PATH"
 KBUILD_COMPILER_STRING=$("${CL}/bin/clang" --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
