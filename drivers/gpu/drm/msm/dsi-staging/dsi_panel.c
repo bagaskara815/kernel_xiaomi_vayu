@@ -1177,6 +1177,30 @@ void dsi_panel_doubleclick_enable(bool on)
 EXPORT_SYMBOL(dsi_panel_doubleclick_enable);
 #endif
 
+int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
+{
+    static const enum dsi_cmd_set_type type_map[] = {
+        DSI_CMD_SET_DISP_LCD_HBM_OFF,
+        DSI_CMD_SET_DISP_LCD_HBM_L1_ON,
+        DSI_CMD_SET_DISP_LCD_HBM_L2_ON
+    };
+
+    enum dsi_cmd_set_type type;
+    int rc;
+
+    if (panel->hbm_mode >= 0 &&
+        panel->hbm_mode < ARRAY_SIZE(type_map))
+        type = type_map[panel->hbm_mode];
+    else
+        type = type_map[0];
+
+    mutex_lock(&panel->panel_lock);
+    rc = dsi_panel_tx_cmd_set(panel, type);
+    mutex_unlock(&panel->panel_lock);
+
+    return rc;
+}
+
 int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 {
 	int rc = 0;
@@ -2272,6 +2296,9 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sync-pen-30hz-command",
 	"qcom,mdss-dsi-sync-pen-60hz-command",
 	"qcom,mdss-dsi-sync-pen-120hz-command",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-l1-on-command",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-off-command",
 #if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
 	"mi,mdss-dsi-read-lockdown-info-command",
 #endif
@@ -2307,6 +2334,9 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sync-pen-30hz-command-state",
 	"qcom,mdss-dsi-sync-pen-60hz-command-state",
 	"qcom,mdss-dsi-sync-pen-120hz-command-state",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-l1-on-command-state",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command-state",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-off-command-state",
 #if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
 	"mi,mdss-dsi-read-lockdown-info-command-state",
 #endif
@@ -4957,6 +4987,10 @@ int dsi_panel_enable(struct dsi_panel *panel)
 	else
 		panel->panel_initialized = true;
 	mutex_unlock(&panel->panel_lock);
+
+	if (panel->hbm_mode)
+		dsi_panel_apply_hbm_mode(panel);
+
 	return rc;
 }
 
