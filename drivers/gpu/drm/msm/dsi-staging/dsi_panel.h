@@ -252,6 +252,7 @@ struct dsi_panel {
 	enum dsi_panel_physical_type panel_type;
 
 	int hbm_mode;
+	int cabc_mode;
 
 	struct brightness_alpha_pair *fod_dim_lut;
 	u32 fod_dim_lut_count;
@@ -389,6 +390,8 @@ int dsi_panel_parse_esd_reg_read_configs(struct dsi_panel *panel);
 void dsi_panel_ext_bridge_put(struct dsi_panel *panel);
 
 int dsi_panel_apply_hbm_mode(struct dsi_panel *panel);
+
+int dsi_panel_apply_cabc_mode(struct dsi_panel *panel);
 
 int dsi_panel_set_fod_hbm(struct dsi_panel *panel, bool status);
 
