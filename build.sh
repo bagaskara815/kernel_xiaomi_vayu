@@ -40,13 +40,6 @@ if [[ ! -d ${AK} ]]; then
   git clone https://github.com/bagaskara815/AnyKernel3 --no-tags --single-branch -b $AK_BRANCH ${AK}
 fi
 
-# KernelSU
-git config --global user.email "bagaskara815@gmail.com"
-git config --global user.name "bagaskara815"
-curl https://gist.githubusercontent.com/bagaskara815/c07442bd636c756c7777e5b4b71e682a/raw/ksusfs.sh >> ksusfs.patch
-git am ksusfs.patch
-curl -LSs "https://raw.githubusercontent.com/Bagaskara815/KernelSU-Next/next/kernel/setup.sh" | bash -s next-susfs
-
 # Setup name
 GIT="$(git log --pretty=format:'%h' -1)"
 ENDZ="${GIT}-$(date "+%d%m%Y-%H%M")"
