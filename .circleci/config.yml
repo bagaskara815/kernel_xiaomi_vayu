@@ -4,18 +4,100 @@ jobs:
   build:
     docker:
       - image: orgesified/latest:latest
+    environment:
+      CCACHE_DIR: /home/circleci/project/.ccache
     steps:
       - checkout
+
       - run:
-          name: "Update system sources and get packages"
+          name: Install packages
           command: |
-            sed -i 's|http://archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
-            sed -i 's/lunar/jammy/g' /etc/apt/sources.list
-            apt-get update -yqq &&
-            apt-get install --no-install-recommends -yqq make bc bison flex cpio ca-certificates curl python2 zip libarchive-tools git lib{c6,c,ssl,xml2,mpc}-dev lib{debuginfod-common,debuginfod1} findutils ccache xz-utils
+            set -euo pipefail
+            if [ -f /etc/apt/sources.list ]; then
+              sed -i 's/lunar/jammy/g' /etc/apt/sources.list || true
+            fi
+            apt-get update -yqq
+            apt-get install --no-install-recommends -yqq \
+              make bc bison flex cpio ca-certificates curl \
+              python3 zip libarchive-tools git findutils \
+              ccache xz-utils libssl-dev \
+              || apt-get install --no-install-recommends -yqq \
+              make bc bison flex cpio ca-certificates curl \
+              python3 zip git findutils ccache xz-utils libssl-dev
+
+      - restore_cache:
+          name: Restore clang cache
+          keys:
+            - tc-clang-v2-r547379-{{ arch }}
+
+      - restore_cache:
+          name: Restore gcc cache
+          keys:
+            - tc-gcc-v2-mvaisakh-{{ arch }}
+
+      - restore_cache:
+          name: Restore ccache
+          keys:
+            - ccache-v2-{{ .Branch }}-{{ .Revision }}
+            - ccache-v2-{{ .Branch }}-
+            - ccache-v2-
+
       - run:
-          name: "Build"
-          command: "bash build.sh"
+          name: Prepare ccache
+          command: |
+            set -euo pipefail
+            mkdir -p "${CCACHE_DIR:-$HOME/project/.ccache}"
+            export CCACHE_DIR="${CCACHE_DIR:-$HOME/project/.ccache}"
+            ccache -M 4G
+            ccache -o compression=true
+            ccache -z
+            ccache -s || true
+            if [ -d /usr/lib/ccache ]; then
+              echo 'export PATH="/usr/lib/ccache:$PATH"' >> "$BASH_ENV"
+            fi
+            echo "export CCACHE_DIR=${CCACHE_DIR}" >> "$BASH_ENV"
+
+      - run:
+          name: Verify toolchain cache
+          command: |
+            set +e
+            echo "clang: $(test -x .tools/clang/clang-r547379/bin/clang && echo HIT || echo MISS)"
+            echo "gcc64: $(test -d .tools/gcc64/bin && echo HIT || echo MISS)"
+            echo "gcc32: $(test -d .tools/gcc32/bin && echo HIT || echo MISS)"
+            du -sh .tools .ccache 2>/dev/null || true
+            df -h . || true
+
+      - run:
+          name: Build kernel
+          no_output_timeout: 60m
+          command: |
+            set -euo pipefail
+            chmod +x build.sh
+            bash build.sh
+            ccache -s || true
+
+      - save_cache:
+          name: Save clang cache
+          key: tc-clang-v2-r547379-{{ arch }}
+          paths:
+            - .tools/clang
+
+      - save_cache:
+          name: Save gcc cache
+          key: tc-gcc-v2-mvaisakh-{{ arch }}
+          paths:
+            - .tools/gcc64
+            - .tools/gcc32
+
+      - save_cache:
+          name: Save ccache
+          key: ccache-v2-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - .ccache
+
+      - store_artifacts:
+          path: dist
+          destination: kernel-dist
 
 workflows:
   build-workflow:
