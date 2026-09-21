@@ -22,3 +22,15 @@ config GKI_HACKS_TO_FIX
 
 	  Unless you are building a GKI kernel to be used with modules
 	  built from a different config, say N here.
+
+config CC_IS_CLANG
+	bool "Clang compiler"
+	default y
+
+config LD_IS_LLD
+	bool "LLD linker"
+	default y
+
+config AS_IS_LLVM
+	bool "LLVM assembler"
+	default y
