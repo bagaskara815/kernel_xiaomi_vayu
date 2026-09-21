@@ -27,13 +27,14 @@ TOKEN="${TOKEN:-}"
 export KBUILD_BUILD_USER=Bagaskara
 export KBUILD_BUILD_HOST=DominatingMachine
 AK_BRANCH="vayu"
+CLANG_VERSION="r547379"
 
 mkdir -p "$TC"
-if [[ ! -x $TC/clang/clang-r547379/bin/clang ]]; then
+if [[ ! -x $TC/clang/clang-${CLANG_VERSION}/bin/clang ]]; then
   rm -rf "$TC/clang"
   git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
     --depth=1 --no-tags --single-branch -b master "$TC/clang"
-  find "$TC/clang" -mindepth 1 -maxdepth 1 -type d ! -name 'clang-r547379' -exec rm -rf {} +
+  find "$TC/clang" -mindepth 1 -maxdepth 1 -type d ! -name "clang-${CLANG_VERSION}" -exec rm -rf {} +
   rm -rf "$TC/clang/.git" 2>/dev/null || true
 fi
 if [[ ! -d $TC/gcc64/bin ]]; then
@@ -58,7 +59,7 @@ LOGE=$(echo "${ZIP_NAME}" | sed "s/.zip/.error.log/")
 IMG="$KDIR/out/arch/arm64/boot/Image"
 DTBO="$KDIR/out/arch/arm64/boot/dtbo.img"
 DTB="$KDIR/out/arch/arm64/boot/dts/qcom"
-CL="$TC/clang/clang-r547379"
+CL="$TC/clang/clang-${CLANG_VERSION}"
 
 if [[ ! -x "${CL}/bin/clang" ]]; then
   echo "error: clang not found at ${CL}/bin/clang"
