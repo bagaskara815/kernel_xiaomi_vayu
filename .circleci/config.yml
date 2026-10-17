@@ -18,22 +18,22 @@ jobs:
             fi
             apt-get update -yqq
             apt-get install --no-install-recommends -yqq \
-              make bc bison flex cpio ca-certificates curl \
+              make bc bison flex cpio ca-certificates curl wget zstd \
               python3 zip libarchive-tools git findutils \
               ccache xz-utils libssl-dev \
               || apt-get install --no-install-recommends -yqq \
-              make bc bison flex cpio ca-certificates curl \
+              make bc bison flex cpio ca-certificates curl wget zstd \
               python3 zip git findutils ccache xz-utils libssl-dev
 
       - restore_cache:
-          name: Restore clang cache
+          name: Restore Neutron clang cache
           keys:
-            - tc-clang-v2-r547379-{{ arch }}
+            - tc-neutron-v2-{{ arch }}
 
       - restore_cache:
-          name: Restore gcc cache
+          name: Restore Neutron glibc cache
           keys:
-            - tc-gcc-v2-mvaisakh-{{ arch }}
+            - tc-neutron-glibc-v2-{{ arch }}
 
       - restore_cache:
           name: Restore ccache
@@ -61,14 +61,14 @@ jobs:
           name: Verify toolchain cache
           command: |
             set +e
-            echo "clang: $(test -x .tools/clang/clang-r547379/bin/clang && echo HIT || echo MISS)"
-            echo "gcc64: $(test -d .tools/gcc64/bin && echo HIT || echo MISS)"
-            echo "gcc32: $(test -d .tools/gcc32/bin && echo HIT || echo MISS)"
+            echo "neutron clang: $(.tools/neutron-clang/bin/clang --version >/dev/null 2>&1 && echo OK || echo NOT-RUNNABLE)"
+            echo "neutron glibc: $(test -d ~/.neutron-tc/glibc && echo PRESENT || echo MISSING)"
+            echo "anykernel: $(test -d .tools/AnyKernel && echo HIT || echo MISS)"
             du -sh .tools .ccache 2>/dev/null || true
             df -h . || true
 
       - run:
-          name: Build kernel
+          name: Build kernel (Neutron Clang)
           no_output_timeout: 60m
           command: |
             set -euo pipefail
@@ -77,17 +77,16 @@ jobs:
             ccache -s || true
 
       - save_cache:
-          name: Save clang cache
-          key: tc-clang-v2-r547379-{{ arch }}
+          name: Save Neutron clang cache
+          key: tc-neutron-v2-{{ arch }}
           paths:
-            - .tools/clang
+            - .tools/neutron-clang
 
       - save_cache:
-          name: Save gcc cache
-          key: tc-gcc-v2-mvaisakh-{{ arch }}
+          name: Save Neutron glibc cache
+          key: tc-neutron-glibc-v2-{{ arch }}
           paths:
-            - .tools/gcc64
-            - .tools/gcc32
+            - ~/.neutron-tc
 
       - save_cache:
           name: Save ccache

@@ -1,186 +1,220 @@
 #!/usr/bin/env bash
-#
-# Copyright (C) 2021 @alanndz (Telegram and Github)
-# SPDX-License-Identifier: GPL-3.0-or-later
-#
-# Build script for vayu (Poco X3 Pro)
-# Credit: Rama Bondan Prakoso (rama982)
-#
 
+set -euo pipefail
 export TZ=":Asia/Jakarta"
 
-if [[ ! -f Makefile ]]; then
-  echo "error: run this script from the kernel root"
-  exit 1
-fi
-
-KDIR=$(pwd)
-TC="${KDIR}/.tools"
-AK=${TC}/AnyKernel
 KERNEL_NAME="Derp-KSU"
 KERNEL_TYPE="EAS"
 PHONE="Poco X3 Pro"
 DEVICE="vayu"
-CONFIG=${CONFIG:-vayu_defconfig}
-CHAT_ID="${CHAT_ID:-}"
+
+DEFCONFIG="${CONFIG:-vayu_defconfig}"
+CODENAME="${CODENAME:-}"
+THINLTO="${THINLTO:-1}"
+DTBO_IMG="${DTBO_IMG:-1}"
+USE_OUT_DIR="${USE_OUT_DIR:-1}"
+NEUTRON_RELEASE="${NEUTRON_RELEASE:-latest}"
+
+AK_REPO="https://github.com/bagaskara815/AnyKernel3"
+AK_BRANCH="vayu"
+
 TOKEN="${TOKEN:-}"
+CHAT_ID="${CHAT_ID:-}"
+
 export KBUILD_BUILD_USER=Bagaskara
 export KBUILD_BUILD_HOST=DominatingMachine
-AK_BRANCH="vayu"
-CLANG_VERSION="r547379"
 
-mkdir -p "$TC"
-if [[ ! -x $TC/clang/clang-${CLANG_VERSION}/bin/clang ]]; then
-  rm -rf "$TC/clang"
-  git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
-    --depth=1 --no-tags --single-branch -b master "$TC/clang"
-  find "$TC/clang" -mindepth 1 -maxdepth 1 -type d ! -name "clang-${CLANG_VERSION}" -exec rm -rf {} +
-  rm -rf "$TC/clang/.git" 2>/dev/null || true
-fi
-if [[ ! -d $TC/gcc64/bin ]]; then
-  git clone https://github.com/mvaisakh/gcc-arm64 --depth=1 --no-tags --single-branch "$TC/gcc64"
-  rm -rf "$TC/gcc64/.git" 2>/dev/null || true
-fi
-if [[ ! -d $TC/gcc32/bin ]]; then
-  git clone https://github.com/mvaisakh/gcc-arm --depth=1 --no-tags --single-branch "$TC/gcc32"
-  rm -rf "$TC/gcc32/.git" 2>/dev/null || true
-fi
-if [[ ! -d ${AK} ]]; then
-  git clone https://github.com/bagaskara815/AnyKernel3 --no-tags --single-branch -b "$AK_BRANCH" "${AK}"
+if [[ -n "${DISABLE_LTO:-}" ]]; then THINLTO=0; fi
+
+KERNEL_ROOT="$(dirname "$(readlink -f "$0")")"
+cd "${KERNEL_ROOT}"
+
+NEUTRON_DIR="${NEUTRON_DIR:-${KERNEL_ROOT}/.tools/neutron-clang}"
+OUT="${KERNEL_ROOT}/out"
+AK="${KERNEL_ROOT}/.tools/AnyKernel"
+
+info(){ echo -e "\n[INFO]: $*\n"; }
+die(){ echo -e "\n[ERROR]: $*\n" >&2; exit 1; }
+
+install_neutron(){
+    if "${NEUTRON_DIR}/bin/clang" --version >/dev/null 2>&1; then return 0; fi
+    rm -rf "${NEUTRON_DIR}"
+    info "Setting up Neutron Clang (${NEUTRON_RELEASE})..."
+    mkdir -p "${NEUTRON_DIR}"
+    local sync_arg="-S"
+    if [[ "${NEUTRON_RELEASE}" != "latest" ]]; then sync_arg="-S=${NEUTRON_RELEASE}"; fi
+    (
+        cd "${NEUTRON_DIR}"
+        curl -LfO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+        bash antman "${sync_arg}"
+        if ! "${NEUTRON_DIR}/bin/clang" --version >/dev/null 2>&1; then
+            bash antman --patch=glibc
+        fi
+    ) || { rm -rf "${NEUTRON_DIR}"; die "Failed to set up Neutron Clang"; }
+    if ! "${NEUTRON_DIR}/bin/clang" --version >/dev/null 2>&1; then
+        ldd "${NEUTRON_DIR}/bin/clang" 2>&1 | head -3 || true
+        die "Neutron clang not runnable"
+    fi
+}
+
+PKGS=(make bc bison flex pkg-config git curl wget tar xz-utils zip unzip cpio rsync
+      kmod perl python3 python-is-python3 libssl-dev libelf-dev libncurses-dev
+      zlib1g-dev libyaml-dev lz4 zstd device-tree-compiler)
+
+install_deps(){
+    if ! command -v dpkg &>/dev/null; then
+        info "Non-apt system: make sure the build deps are installed."
+        return 0
+    fi
+    local missing=() available=() p
+    local SUDO="sudo"
+    if [ "$(id -u)" = 0 ]; then SUDO=""; fi
+    for p in "${PKGS[@]}"; do
+        [ "$(dpkg-query -W -f='${db:Status-Status}' "$p" 2>/dev/null)" = installed ] || missing+=("$p")
+    done
+    [ "${#missing[@]}" = 0 ] && return 0
+    for p in "${missing[@]}"; do apt-cache show "$p" &>/dev/null && available+=("$p"); done
+    [ "${#available[@]}" = 0 ] && return 0
+    info "Installing: ${available[*]}"
+    ${SUDO} apt update -qq || true
+    if ! ${SUDO} apt install -y --no-install-recommends "${available[@]}"; then
+        info "apt could not install every package (continuing)"
+    fi
+}
+
+install_anykernel(){
+    if [[ -d "${AK}" ]]; then return 0; fi
+    info "Cloning AnyKernel3 (${AK_BRANCH})..."
+    git clone --no-tags --single-branch -b "${AK_BRANCH}" "${AK_REPO}" "${AK}"
+}
+
+if [ ! -f Makefile ] || [ ! -d arch/arm64 ]; then die "Run this from the kernel source root."; fi
+
+export PATH="${NEUTRON_DIR}/bin:${PATH}"
+export LD_LIBRARY_PATH="${NEUTRON_DIR}/lib:${NEUTRON_DIR}/lib64:${LD_LIBRARY_PATH:-}"
+
+install_deps
+install_neutron
+install_anykernel
+
+if command -v ccache &>/dev/null; then
+    for d in /usr/lib/ccache /usr/lib64/ccache /usr/libexec/ccache; do
+        if [[ -d "$d" ]]; then export PATH="$d:${PATH}"; break; fi
+    done
+    export CCACHE_DIR="${CCACHE_DIR:-${KERNEL_ROOT}/.ccache}"
+    export CCACHE_COMPILERCHECK="${CCACHE_COMPILERCHECK:-content}"
 fi
 
-GIT="$(git log --pretty=format:'%h' -1)"
-ENDZ="${GIT}-$(date "+%d%m%Y-%H%M")"
-KVERSION="${CODENAME:-}-${GIT}"
-ZIP_NAME="${KERNEL_NAME}${CODENAME:-}-${DEVICE}-${ENDZ}.zip"
-LOG=$(echo "${ZIP_NAME}" | sed "s/.zip/.log/")
-LOGE=$(echo "${ZIP_NAME}" | sed "s/.zip/.error.log/")
+GIT="$(git log --pretty=format:'%h' -1 2>/dev/null || true)"; GIT="${GIT:-nogit}"
+KVERSION="${CODENAME}-${GIT}"
+ENDZ="${GIT}-$(date '+%d%m%Y-%H%M')"
+ZIP_NAME="${KERNEL_NAME}${CODENAME}-${DEVICE}-${ENDZ}.zip"
 
-IMG="$KDIR/out/arch/arm64/boot/Image"
-DTBO="$KDIR/out/arch/arm64/boot/dtbo.img"
-DTB="$KDIR/out/arch/arm64/boot/dts/qcom"
-CL="$TC/clang/clang-${CLANG_VERSION}"
-
-if [[ ! -x "${CL}/bin/clang" ]]; then
-  echo "error: clang not found at ${CL}/bin/clang"
-  exit 1
-fi
-
-if command -v ccache >/dev/null 2>&1 && [[ -d /usr/lib/ccache ]]; then
-  export CCACHE_DIR="${CCACHE_DIR:-$KDIR/.ccache}"
-  mkdir -p "$CCACHE_DIR"
-  export CCACHE_COMPILERCHECK="${CCACHE_COMPILERCHECK:-content}"
-  export PATH="/usr/lib/ccache:${CL}/bin:${TC}/gcc64/bin:${TC}/gcc32/bin:$PATH"
-  KBUILD_COMPILER_STRING=$("${CL}/bin/clang" --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
-  KBUILD_COMPILER_STRING="${KBUILD_COMPILER_STRING} + ccache"
+if [[ "${USE_OUT_DIR}" = 1 ]]; then
+    LOG_DIR="${OUT}"
 else
-  export PATH="${CL}/bin:${TC}/gcc64/bin:${TC}/gcc32/bin:$PATH"
-  KBUILD_COMPILER_STRING=$("${CL}/bin/clang" --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
+    LOG_DIR="${KERNEL_ROOT}"
 fi
-export LD_LIBRARY_PATH="${CL}/lib:${LD_LIBRARY_PATH:-}"
+mkdir -p "${LOG_DIR}"
+LOG="${LOG_DIR}/${ZIP_NAME/.zip/.log}"
+LOGE="${LOG_DIR}/${ZIP_NAME/.zip/.error.log}"
 
-START=$(date +"%s")
-mkdir -p "$KDIR/out"
+CLANG_BIN="${NEUTRON_DIR}/bin/clang"
+KBUILD_COMPILER_STRING="$("${CLANG_BIN}" --version | head -n 1 | sed -e 's/(http.*)//g' -e 's/  */ /g' -e 's/[[:space:]]*$//')"
+
+BUILD_OPTIONS=(
+    -j"$(nproc)"
+    ARCH=arm64
+    LLVM=1
+    LLVM_IAS=1
+    CLANG_TRIPLE=aarch64-linux-gnu-
+    CROSS_COMPILE=aarch64-linux-gnu-
+    LOCALVERSION="${KVERSION}"
+)
+if [[ "${USE_OUT_DIR}" = 1 ]]; then
+    BUILD_OPTIONS+=(O="${OUT}")
+    BOOT_DIR="${OUT}/arch/arm64/boot"
+else
+    BOOT_DIR="${KERNEL_ROOT}/arch/arm64/boot"
+fi
+
+IMG="${BOOT_DIR}/Image"
+DTBO="${BOOT_DIR}/dtbo.img"
+DTB_DIR="${BOOT_DIR}/dts/qcom"
 
 TG_ENABLED=0
-[[ -n "${TOKEN}" && -n "${CHAT_ID}" ]] && TG_ENABLED=1
+if [[ -n "${TOKEN}" && -n "${CHAT_ID}" ]]; then TG_ENABLED=1; fi
 
-disable_lto() {
-  scripts/config --file out/.config -e CONFIG_THINLTO
+send_info(){
+    [[ "${TG_ENABLED}" -eq 1 ]] || return 0
+    curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+        -d chat_id="${CHAT_ID}" \
+        -d "parse_mode=HTML" \
+        -d text="$(
+            for POST in "${@}"; do echo "${POST}"; done
+        )" &>/dev/null || true
 }
 
-enable_dtbo() {
-  scripts/config --file out/.config -e CONFIG_BUILD_ARM64_DTBO_IMG
+push(){
+    [[ "${TG_ENABLED}" -eq 1 ]] || return 0
+    [[ -f "$1" ]] || return 0
+    curl -F document=@"$1" "https://api.telegram.org/bot${TOKEN}/sendDocument" \
+        -F chat_id="${CHAT_ID}" \
+        -F "disable_web_page_preview=true" \
+        -F "parse_mode=html" \
+        -F caption="Build took $((DIFF / 60)) minute(s) and $((DIFF % 60)) second(s). | #Derp | <b>vayu</b>" \
+        &>/dev/null || true
 }
 
-m() {
-  make -j"$(nproc --all)" O=out \
-    ARCH=arm64 \
-    LOCALVERSION="${KVERSION}" \
-    CC="clang" \
-    LLVM=1 \
-    LLVM_IAS=1 \
-    LD=ld.lld \
-    AR=llvm-ar \
-    NM=llvm-nm \
-    OBJCOPY=llvm-objcopy \
-    OBJDUMP=llvm-objdump \
-    STRIP=llvm-strip \
-    CLANG_TRIPLE=aarch64-elf- \
-    CROSS_COMPILE=aarch64-elf- \
-    CROSS_COMPILE_ARM32=arm-eabi- \
-    ${ENV:-} \
-    "${@}"
-}
+START=$(date +%s)
 
-m "${CONFIG}" >/dev/null
-if [[ -z "${DISABLE_LTO:-}" ]]; then
-  disable_lto
-fi
-enable_dtbo
-m > >(tee "$KDIR/out/${LOG}") 2> >(tee "$KDIR/out/${LOGE}" >&2)
+send_info "<b>----- Nightly Kernel For Derp -----</b>" \
+    "<b>Device:</b> ${DEVICE} or ${PHONE}" \
+    "<b>Name:</b> <code>${KERNEL_NAME}${KVERSION}</code>" \
+    "<b>Kernel Version:</b> <code>$(make -s kernelversion 2>/dev/null || echo '?')</code>" \
+    "<b>Type:</b> <code>${KERNEL_TYPE}</code>" \
+    "<b>Branch:</b> <code>$(git branch --show-current)</code>" \
+    "<b>Commit:</b> <code>$(git log --pretty=format:'%h : %s' -1)</code>" \
+    "<b>Started on:</b> <code>$(hostname)</code>" \
+    "<b>Compiler:</b> <code>${KBUILD_COMPILER_STRING}</code>"
 
-END=$(date +"%s")
+info "Kernel $(make -s kernelversion 2>/dev/null || echo '?') | defconfig: ${DEFCONFIG} | clang: ${KBUILD_COMPILER_STRING}"
+
+make "${BUILD_OPTIONS[@]}" "${DEFCONFIG}" >/dev/null
+if [[ "${THINLTO}" = 1 ]]; then scripts/config --file "${LOG_DIR}/.config" -e CONFIG_THINLTO; fi
+if [[ "${DTBO_IMG}" = 1 ]]; then scripts/config --file "${LOG_DIR}/.config" -e CONFIG_BUILD_ARM64_DTBO_IMG; fi
+
+rm -f "${IMG}" "${DTBO}"
+make "${BUILD_OPTIONS[@]}" > >(tee "${LOG}") 2> >(tee "${LOGE}" >&2) || true
+sleep 1
+
+END=$(date +%s)
 DIFF=$((END - START))
 
-sendInfo() {
-  [[ "${TG_ENABLED}" -eq 1 ]] || return 0
-  curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-    -d chat_id="${CHAT_ID}" \
-    -d "parse_mode=HTML" \
-    -d text="$(
-      for POST in "${@}"; do
-        echo "${POST}"
-      done
-    )" &>/dev/null || true
-}
-
-sendInfo "<b>----- Nightly Kernel For Derp -----</b>" \
-  "<b>Device:</b> ${DEVICE} or ${PHONE}" \
-  "<b>Name:</b> <code>${KERNEL_NAME}${KVERSION}</code>" \
-  "<b>Kernel Version:</b> <code>$(make kernelversion)</code>" \
-  "<b>Type:</b> <code>${KERNEL_TYPE}</code>" \
-  "<b>Branch:</b> <code>$(git branch --show-current)</code>" \
-  "<b>Commit:</b> <code>$(git log --pretty=format:'%h : %s' -1)</code>" \
-  "<b>Started on:</b> <code>$(hostname)</code>" \
-  "<b>Compiler:</b> <code>${KBUILD_COMPILER_STRING}</code>"
-
-push() {
-  [[ "${TG_ENABLED}" -eq 1 ]] || return 0
-  [[ -f "$1" ]] || return 0
-  curl -F document=@"$1" "https://api.telegram.org/bot${TOKEN}/sendDocument" \
-    -F chat_id="${CHAT_ID}" \
-    -F "disable_web_page_preview=true" \
-    -F "parse_mode=html" \
-    -F caption="Build took $((DIFF / 60)) minute(s) and $((DIFF % 60)) second(s). | #Derp | <b>vayu</b>" \
-    &>/dev/null || true
-}
-
-if [[ ! -f ${IMG} ]]; then
-  echo "error: build failed"
-  push "out/${LOG}"
-  push "out/${LOGE}"
-  exit 1
+if [[ ! -f "${IMG}" ]]; then
+    push "${LOG}"
+    push "${LOGE}"
+    die "Build failed (no ${IMG})"
 fi
 
 make -C "${AK}" clean
 cp "${IMG}" "${AK}"
 cp "${DTBO}" "${AK}"
-find "${DTB}" -name "*.dtb" -exec cat {} + >"${AK}/dtb"
+find "${DTB_DIR}" -name "*.dtb" -exec cat {} + >"${AK}/dtb"
 make -C "${AK}" ZIP="${ZIP_NAME}" normal
 
-mkdir -p "${KDIR}/dist"
-cp -f "${AK}/${ZIP_NAME}" "${KDIR}/dist/" 2>/dev/null || true
-cp -f "${IMG}" "${KDIR}/dist/" 2>/dev/null || true
-cp -f "${DTBO}" "${KDIR}/dist/" 2>/dev/null || true
-cp -f "out/${LOG}" "${KDIR}/dist/" 2>/dev/null || true
-find out/arch/arm64/boot/dts/qcom -name "*.dtb" -exec cat {} + >"${KDIR}/out/arch/arm64/boot/dtb.img"
-cp -f "${KDIR}/out/arch/arm64/boot/dtb.img" "${KDIR}/dist/" 2>/dev/null || true
+mkdir -p "${KERNEL_ROOT}/dist"
+cp -f "${AK}/${ZIP_NAME}" "${KERNEL_ROOT}/dist/"
+cp -f "${IMG}" "${KERNEL_ROOT}/dist/"
+cp -f "${DTBO}" "${KERNEL_ROOT}/dist/"
+cp -f "${LOG}" "${KERNEL_ROOT}/dist/"
+find "${DTB_DIR}" -name "*.dtb" -exec cat {} + >"${BOOT_DIR}/dtb.img"
+cp -f "${BOOT_DIR}/dtb.img" "${KERNEL_ROOT}/dist/"
 
 push "${AK}/${ZIP_NAME}"
-push "out/${LOG}"
-push "out/arch/arm64/boot/Image"
-push "out/arch/arm64/boot/dtbo.img"
-push "out/arch/arm64/boot/dtb.img"
+push "${LOG}"
+push "${IMG}"
+push "${DTBO}"
+push "${BOOT_DIR}/dtb.img"
 
 echo "Build OK: dist/${ZIP_NAME} (${DIFF}s)"
