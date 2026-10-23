@@ -24,8 +24,6 @@ CHAT_ID="${CHAT_ID:-}"
 export KBUILD_BUILD_USER=Bagaskara
 export KBUILD_BUILD_HOST=DominatingMachine
 
-if [[ -n "${DISABLE_LTO:-}" ]]; then THINLTO=0; fi
-
 KERNEL_ROOT="$(dirname "$(readlink -f "$0")")"
 cd "${KERNEL_ROOT}"
 
@@ -181,8 +179,15 @@ send_info "<b>----- Nightly Kernel For Derp -----</b>" \
 info "Kernel $(make -s kernelversion 2>/dev/null || echo '?') | defconfig: ${DEFCONFIG} | clang: ${KBUILD_COMPILER_STRING}"
 
 make "${BUILD_OPTIONS[@]}" "${DEFCONFIG}" >/dev/null
-if [[ "${THINLTO}" = 1 ]]; then scripts/config --file "${LOG_DIR}/.config" -e CONFIG_THINLTO; fi
+if [[ -n "${DISABLE_LTO:-}" ]]; then
+    scripts/config --file "${LOG_DIR}/.config" -d CONFIG_LTO_CLANG -e CONFIG_LTO_NONE -d CONFIG_THINLTO
+elif [[ "${THINLTO}" = 1 ]]; then
+    scripts/config --file "${LOG_DIR}/.config" -e CONFIG_LTO_CLANG -e CONFIG_THINLTO
+else
+    scripts/config --file "${LOG_DIR}/.config" -e CONFIG_LTO_CLANG -d CONFIG_THINLTO
+fi
 if [[ "${DTBO_IMG}" = 1 ]]; then scripts/config --file "${LOG_DIR}/.config" -e CONFIG_BUILD_ARM64_DTBO_IMG; fi
+make -s "${BUILD_OPTIONS[@]}" olddefconfig >/dev/null
 
 rm -f "${IMG}" "${DTBO}"
 make "${BUILD_OPTIONS[@]}" > >(tee "${LOG}") 2> >(tee "${LOGE}" >&2) || true
